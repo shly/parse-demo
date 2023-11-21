@@ -1,6 +1,7 @@
 const parse = require('./parse')
 const { IDgenerator }= require('./utils')
-const flowInfo = parse('开始发起;\nif(需要选择签署文件) {\n  if(是否使用模板文件)\n   {\n      选择模板;\n      return\n   }\n  else if(是否本地上传文件？)\n    本地上传文件;\n  else {\n    使用默认文件\n  }\n}\nif (需要选择签署方?){\n  选择签署方;\n}\n发起签署;')
+const flowInfo = parse('开始发起;\nif(需要选择签署文件) {\n  选择签署文件;\n} else {\n  不选择签署文件；\n}\n发起签署;')
+// const flowInfo = parse('开始发起;\nif(需要选择签署文件) {\n  if(是否使用模板文件)\n   {\n      选择模板;\n      return\n   }\n  else if(是否本地上传文件？)\n    本地上传文件;\n  else {\n    使用默认文件\n  }\n}\nif (需要选择签署方?){\n  选择签署方;\n}\n发起签署;')
 class Node {
   constructor(node) {
     this.name = node.name
@@ -46,28 +47,33 @@ function traverse(nodeList, pre = null) {
     if (isExpression(node)) {
       const newNode = new Node({name: node.expression.text})
       if(pre) {
-        edges.push({from: pre.id, to: newNode.id})
+        edges.push({from: pre.name, to: newNode.name})
         pre = newNode
       }
       nodes.push(newNode)
     }
     if (isIfsChain(node)) {
-      Reflect.ownKeys().forEach(key => {
-        const block = node.ifs_chain[key]
-        if (block) {
-          const newNode = new Node({name: block.text, nodeType: 'CHECK'})
-          if(pre) {
-            edges.push({from: pre.id, to: newNode.id, condition: key})
-          }
-          nodes.push(newNode)
-          const {nodes: subNodes, edges: subEdges} = traverse(block.instruction, newNode)
-          nodes.push(...subNodes)
-          edges.push(...subEdges)
-        }
-      })
+      const ifsChainNode = node.ifs_chain
+      const if_block = ifsChainNode.if_block
+      const else_block = ifsChainNode.else_block
+      const newNode = new Node({name: if_block.text, nodeType: 'CHECK'})
+      if(pre) {
+        edges.push({from: pre.name, to: newNode.name, condition: 'true'})
+      }
+      nodes.push(newNode)
+
+      const {nodes: subNodes, edges: subEdges} = traverse(if_block.instruction, newNode)
+      nodes.push(...subNodes)
+      edges.push(...subEdges)
+
+      if(else_block) {
+        const {nodes: subNodes, edges: subEdges} = traverse(else_block.instruction, pre)
+        nodes.push(...subNodes)
+        edges.push(...subEdges)
+      }
     }
     if (isReturnStatement(node)) {
-      
+      pre = null
     }
   })
   
@@ -79,10 +85,10 @@ function traverse(nodeList, pre = null) {
 function isExpression(node) {
   return Reflect.has(node, 'expression') 
 }
-function isIfsChain() {
+function isIfsChain(node) {
   return Reflect.has(node, 'ifs_chain') 
 }
-function isIfsChain() {
+function isIfsChain(node) {
   return Reflect.has(node, 'ifs_chain') 
 }
 function isReturnStatement(node) {
