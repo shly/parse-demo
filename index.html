@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Document</title>
+  <script src="./parse.js"></script>
+  <script>
+    // const switchContent = parse('Take bucket;\nswitch(Bucket color) {\n  case Red:\n    Take red liquid;\n    break;\n  case Blue:\n    Take blue liquid;\n    break;\n  case Yellow:\n  case Purple:\n    Leave bucket empt;\n    break; # last break is optional\n}\nEnd;')
+    // console.log('*******')
+    // console.log(switchContent)
+    const ifContent = parse('开始发起;\nif(需要选择签署文件) {\n  if(是否使用模板文件)\n   {\n      选择模板;\n      return\n   }\n  else\n    本地上传文件;\n}\nif (需要选择签署方?){\n  选择签署方;\n}\n发起签署;')
+    console.log(ifContent)
+  </script>
+</head>
+<body>
+  
+</body>
+</html>
