@@ -1,7 +1,7 @@
 const parse = require('./parse')
 const { IDgenerator }= require('./utils')
-const flowInfo = parse('开始发起;\nif(需要选择签署文件) {\n  选择签署文件;\n} else {\n  不选择签署文件；\n}\n发起签署;')
-// const flowInfo = parse('开始发起;\nif(需要选择签署文件) {\n  if(是否使用模板文件)\n   {\n      选择模板;\n      return\n   }\n  else if(是否本地上传文件？)\n    本地上传文件;\n  else {\n    使用默认文件\n  }\n}\nif (需要选择签署方?){\n  选择签署方;\n}\n发起签署;')
+// const flowInfo = parse('开始发起;\nif(需要选择签署文件) {\n  选择签署文件;\n} else {\n  不选择签署文件；\n}\n发起签署;')
+const flowInfo = parse('开始发起;\nif(需要选择签署文件) {\n  if(是否使用模板文件)\n   {\n      选择模板;\n   return\n }\n  else {\n  上传本地文件;\n  }\n}\nif (需要选择签署方？){\n  选择签署方;\n}\n发起签署;')
 class Node {
   constructor(node) {
     this.name = node.name
@@ -31,55 +31,59 @@ class Flow {
     this.edges = flow.edges
   }
 }
-function createNodeFactory(node) {
-  if (isExpression(node)) {
-    return new Node({name: node.expression.text})
-  }
-  if (isIfsChain(node)) {
-    const if_block = node.ifs_chain.if_block
-    return new Node({name: if_block.text, nodeType: 'CHECK'})
-  }
-}
-function traverse(nodeList, pre = null) {
-  const nodes = []
-  const edges = []
+const nodes = []
+const edges = []
+function traverse(nodeList, initPreNodes = [], initCondition = []) {
+  let preNodes = [...initPreNodes]
+  let conditions = [...initCondition]
   nodeList.instructions.forEach(node => {
     if (isExpression(node)) {
       const newNode = new Node({name: node.expression.text})
-      if(pre) {
-        edges.push({from: pre.name, to: newNode.name})
-        pre = newNode
-      }
+      preNodes.forEach((preNode, index) => {
+        edges.push(new Edge({from: preNode.name, to: newNode.name, condition: conditions[index]}))
+      })
       nodes.push(newNode)
-    }
-    if (isIfsChain(node)) {
+      preNodes = [newNode]
+      conditions = ['']
+    }else if (isIfsChain(node)) {
       const ifsChainNode = node.ifs_chain
       const if_block = ifsChainNode.if_block
       const else_block = ifsChainNode.else_block
+      let if_preNodes = []
+      let else_preNodes = []
+      let if_conditions = [] // if语句中叶子结点到下一个节点的条件
+      let else_conditions = [] // else语句中叶子结点到下一个节点的条件
+      // 生成判断节点
       const newNode = new Node({name: if_block.text, nodeType: 'CHECK'})
-      if(pre) {
-        edges.push({from: pre.name, to: newNode.name, condition: 'true'})
-      }
+      preNodes.forEach((preNode, index) => {
+        edges.push(new Edge({from: preNode.name, to: newNode.name, condition: conditions[index]}))
+      })
       nodes.push(newNode)
 
-      const {nodes: subNodes, edges: subEdges} = traverse(if_block.instruction, newNode)
-      nodes.push(...subNodes)
-      edges.push(...subEdges)
+      const if_preNodesInfo = traverse(if_block.instruction, [newNode], ['true'])
+      if_preNodes = if_preNodesInfo.preNodes
+      if_conditions = if_preNodesInfo.conditions
 
       if(else_block) {
-        const {nodes: subNodes, edges: subEdges} = traverse(else_block.instruction, pre)
-        nodes.push(...subNodes)
-        edges.push(...subEdges)
+        const else_preNodesInfo = traverse(else_block.instruction, [newNode], ['false'])
+        else_preNodes = else_preNodesInfo.preNodes
+        else_conditions = else_preNodesInfo.conditions
+      } else {
+        else_preNodes = [newNode]
+        else_conditions = ['false']
       }
-    }
-    if (isReturnStatement(node)) {
-      pre = null
+      preNodes = [...if_preNodes, ...else_preNodes]
+      conditions = [...if_conditions, ...else_conditions]
+     
+    }else if (isReturnStatement(node)) {
+      preNodes = []
+      conditions = []
     }
   })
   
   return {
-    nodes,
-    edges,
+    preNodes,
+    conditions
   }
 }
 function isExpression(node) {
@@ -94,5 +98,6 @@ function isIfsChain(node) {
 function isReturnStatement(node) {
   return Reflect.has(node, 'return')
 }
-console.log(traverse(flowInfo))
-// console.log(new Node())
+traverse(flowInfo)
+console.log(nodes)
+console.log(edges)
