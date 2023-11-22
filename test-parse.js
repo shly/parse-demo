@@ -1,7 +1,7 @@
 const parse = require('./parse')
 const { IDgenerator }= require('./utils')
 // const flowInfo = parse('开始发起;\nif(需要选择签署文件) {\n  选择签署文件;\n} else {\n  不选择签署文件；\n}\n发起签署;')
-const flowInfo = parse('开始发起;\nif(需要选择签署文件) {\n  if(是否使用模板文件)\n   {\n      选择模板;\n   return\n }\n  else {\n  上传本地文件;\n  }\n}\nif (需要选择签署方？){\n  选择签署方;\n}\n发起签署;')
+const flowInfo = parse('开始发起;\nif(需要选择签署文件) {\n  if(是否使用模板文件)\n      择模板;\n  else {\n    上传本地文件;\n  }\n}\nif (需要选择签署方？){\n  选择签署方;\n}\n发起签署;')
 class Node {
   constructor(node) {
     this.name = node.name
@@ -31,11 +31,14 @@ class Flow {
     this.edges = flow.edges
   }
 }
-const nodes = []
-const edges = []
+
+const nodes = [] // 节点
+const edges = [] // 边
 function traverse(nodeList, initPreNodes = [], initCondition = []) {
-  let preNodes = [...initPreNodes]
-  let conditions = [...initCondition]
+  let preNodes = [...initPreNodes] // 当前节点的上一个节点
+  let conditions = [...initCondition] // 上一个节点到当前节点的条件
+
+  nodeList.instructions = nodeList.instructions || [nodeList] // 为了兼容
   nodeList.instructions.forEach(node => {
     if (isExpression(node)) {
       const newNode = new Node({name: node.expression.text})
@@ -75,7 +78,7 @@ function traverse(nodeList, initPreNodes = [], initCondition = []) {
       preNodes = [...if_preNodes, ...else_preNodes]
       conditions = [...if_conditions, ...else_conditions]
      
-    }else if (isReturnStatement(node)) {
+    } else if (isReturnStatement(node)) {
       preNodes = []
       conditions = []
     }
