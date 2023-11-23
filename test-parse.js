@@ -1,6 +1,6 @@
 const parse = require('./parse')
 const { IDgenerator }= require('./utils')
-const flowInfo = parse('开始发起;\nif(需要选择签署文件) {\n  if(是否使用模板文件)\n      择模板;\n  else {\n    上传本地文件;\n  }\n}\nif (需要选择签署方？){\n  选择签署方;\n}\n发起签署;')
+
 class Node {
   constructor(node) {
     this.name = node.name // 节点名称
@@ -51,13 +51,27 @@ function isIfsChain(node) {
 function isReturnStatement(node) {
   return Reflect.has(node, 'return')
 }
+function isSwitchStatement(node) {
+  return Reflect.has(node, 'switch_block')
+}
+function isCaseLabel(node) {
+  return Reflect.has(node, 'switch_block')
+}
+function createEdge(preNodes,conditions, curNode) {
+  const newEdges = []
+  preNodes.forEach((preNode, index) => {
+    newEdges.push(new Edge({from: preNode.name, to: curNode.name, condition: conditions[index]}))
+  })
+  return newEdges
+}
 /**
  * Parses the given nodeList to generate a flow graph.
  *
  * @param {Array} nodeList - The list of nodes to parse.
  * @return {Object} An object containing the generated nodes and edges of the flow graph.
  */
-function parseFlow(nodeList) {
+function parseFlow(flowInfo) {
+  const nodeList = parse(flowInfo)
   const nodes = [] // 节点
   const edges = [] // 边
   function traverse(nodeList, initPreNodes = [], initCondition = []) {
@@ -65,77 +79,99 @@ function parseFlow(nodeList) {
     let conditions = [...initCondition] // 上一个节点到当前节点的条件
 
     nodeList.instructions = nodeList.instructions || [nodeList] // 为了兼容
-    nodeList.instructions.forEach(node => {
+    nodeList.instructions.forEach(curNode => {
       // 根据不同节点类型，生成节点，边、返回需要与下一个节点相连的节点，以及连接条件
-      if (isExpression(node)) {
-        // 生成节点与边
-        const newNode = new Node({name: node.expression.text})
-        edges.push(...createEdge(preNodes,conditions, newNode))
-        nodes.push(newNode)
-        // 生成与下个节点相连的节点与条件
-        preNodes = [newNode]
-        conditions = ['']
-      } else if (isIfsChain(node)) {
-        const ifsChainNode = node.ifs_chain
-
-        const if_block = ifsChainNode.if_block
-        const else_block = ifsChainNode.else_block
-        let if_preNodes = []
-        let else_preNodes = []
-        let if_conditions = [] // if语句中叶子结点到下一个节点的条件
-        let else_conditions = [] // else语句中叶子结点到下一个节点的条件
-
-        // 生成判断节点
-        const newNode = new Node({name: if_block.text, nodeType: 'CHECK'})
-        edges.push(...createEdge(preNodes,conditions, newNode))
-        nodes.push(newNode)
+      const preNodeInfo = createNodeAndEdge(preNodes, conditions, curNode)
       
-        // 生成if语句中叶子结点,if语句中if_block一定存在，所以无需判断是否为空
-        const if_preNodesInfo = traverse(if_block.instruction, [newNode], ['true'])
-        // 得到if语句中true子句与下个节点相连的节点，以及与下个节点相连的条件
-        if_preNodes = if_preNodesInfo.preNodes
-        if_conditions = if_preNodesInfo.conditions
-        
-        // 生成else语句中叶子结点，以及与下个节点相连的节点与条件
-        if(else_block) {
-          const else_preNodesInfo = traverse(else_block.instruction, [newNode], ['false'])
-          else_preNodes = else_preNodesInfo.preNodes
-          else_conditions = else_preNodesInfo.conditions
-        } else {
-          // 如果没有else语句，则判断节点直接与下一节点相连，条件为false
-          else_preNodes = [newNode]
-          else_conditions = ['false']
-        }
-        // 拿到所有if语句中与下个节点相连的节点与条件，供下次循环中与下一节点相连
-        preNodes = [...if_preNodes, ...else_preNodes]
-        conditions = [...if_conditions, ...else_conditions]
-      } else if (isReturnStatement(node)) {
-        // 如果是有return语句，则无需与下一节点相连，直接返回
-        preNodes = []
-        conditions = []
-      }
+      preNodes = preNodeInfo.preNodes
+      conditions = preNodeInfo.conditions
     })
-    
+    // 返回当前循环中最后一个语句中的要与下一个节点相连的节点列表和条件
     return {
       preNodes,
       conditions
     }
   }
-  function createEdge(preNodes,conditions, curNode) {
-    const newEdges = []
-    preNodes.forEach((preNode, index) => {
-      newEdges.push(new Edge({from: preNode.name, to: curNode.name, condition: conditions[index]}))
-    })
-    return newEdges
+  // 生成节点和边，返回需要与下一节点相连的节点列表与条件列表
+  function createNodeAndEdge(preNodes,conditions, curNode) {
+    if (isReturnStatement(curNode)) {
+      // 如果是有return语句，则无需与下一节点相连，直接返回
+      return {
+        preNodes: [],
+        conditions: []
+      }
+    } 
+    if (isExpression(curNode)) {
+      // 生成节点与边
+      const newNode = new Node({name: curNode.expression.text})
+      edges.push(...createEdge(preNodes,conditions, newNode))
+      nodes.push(newNode)
+      // 生成与下个节点相连的节点与条件
+      preNodes = [newNode]
+      conditions = ['']
+    } else if (isIfsChain(curNode)) {
+      const ifsChainNode = curNode.ifs_chain
+
+      const if_block = ifsChainNode.if_block
+      const else_block = ifsChainNode.else_block
+
+      let if_preNodes = []
+      let else_preNodes = []
+      let if_conditions = [] // if语句中叶子结点到下一个节点的条件
+      let else_conditions = [] // else语句中叶子结点到下一个节点的条件
+
+      // 生成判断节点
+      const newNode = new Node({name: if_block.text, nodeType: 'CHECK'})
+      edges.push(...createEdge(preNodes,conditions, newNode))
+      nodes.push(newNode)
+    
+      // 生成if语句中叶子结点,if语句中if_block一定存在，所以无需判断是否为空
+      const if_preNodesInfo = traverse(if_block.instruction, [newNode], ['true'])
+      // 得到if语句中true子句与下个节点相连的节点，以及与下个节点相连的条件
+      if_preNodes = if_preNodesInfo.preNodes
+      if_conditions = if_preNodesInfo.conditions
+      
+      // 生成else语句中叶子结点，以及与下个节点相连的节点与条件
+      if(else_block) {
+        const else_preNodesInfo = traverse(else_block.instruction, [newNode], ['false'])
+        else_preNodes = else_preNodesInfo.preNodes
+        else_conditions = else_preNodesInfo.conditions
+      } else {
+        // 如果没有else语句，则判断节点直接与下一节点相连，条件为false
+        else_preNodes = [newNode]
+        else_conditions = ['false']
+      }
+      // 拿到所有if语句中与下个节点相连的节点与条件，供下次循环中与下一节点相连
+      preNodes = [...if_preNodes, ...else_preNodes]
+      conditions = [...if_conditions, ...else_conditions]
+    } else if (isSwitchStatement(curNode)){
+      const newNode = new Node({name: curNode.switch_block.text, nodeType: 'CHECK'})
+      edges.push(...createEdge(preNodes,conditions, newNode))
+      nodes.push(newNode)
+      const subNodes = curNode.switch_block.instructions
+      subNodes.forEach(subNode => {
+
+      })
+      // 生成与下个节点相连的节点与条件
+      preNodes = [newNode]
+      conditions = ['']
+    }
+    return {
+      preNodes,
+      conditions
+    }
   }
+ 
   traverse(nodeList)
   return {
     nodes,
     edges 
   }
 }
-//  
-
+const {nodes, edges} = parseFlow('Take bucket;\nswitch(Bucket color) {\n  case Red:\n    Take red liquid;\n    break;\n  case Blue:\n    Take blue liquid;\n    break;\n  case Yellow:\n  case Purple:\n    Leave bucet empty;\n    break; # last break is optional\n}\nEnd;')
+// const {nodes, edges} = parseFlow('开始发起;\nif(需要选择签署文件) {\n  if(是否使用模板文件)\n      择模板;\n  else {\n    上传本地文件;\n  }\n}\nif (需要选择签署方？){\n  选择签署方;\n}\n发起签署;')
+console.log(nodes)
+console.log(edges)
 module.exports = {
   parseFlow
 }
